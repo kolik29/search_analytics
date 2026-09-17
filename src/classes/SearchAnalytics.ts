@@ -9,6 +9,7 @@ export class SearchAnalytics {
     from?: string,
     to?: string,
   ): SearchMetric {
+    // Если переданы даты, ограничиваем выборку по диапазону, иначе анализируем весь CSV.
     const fromDate = from ? this.parseDateInput(from, "from") : undefined;
     const toDate = to ? this.parseDateInput(to, "to") : undefined;
 
@@ -18,6 +19,9 @@ export class SearchAnalytics {
         (!fromDate || (rowDate !== null && rowDate >= fromDate)) &&
         (!toDate || (rowDate !== null && rowDate <= toDate));
 
+      // 1) Сравниваем только нужный путь поиска без параметров URL.
+      // 2) Оставляем только общий поиск global.
+      // 3) Исключаем клики и пустые запросы.
       return (
         isInRange &&
         this.getPath(row.PAGE_URL) === path &&
@@ -26,6 +30,8 @@ export class SearchAnalytics {
         row.QUERY.trim() !== ""
       );
     });
+
+    // Формула: число записей с RESULTS_COUNT = 0 / число оставшихся записей * 100%.
     const zeroResults = selectedRows.filter(
       (row) => row.RESULTS_COUNT.trim() === "0",
     ).length;
@@ -46,11 +52,16 @@ export class SearchAnalytics {
     from?: string,
     to?: string,
   ): ComparisonReport {
+    // Сравниваем старый и новый поиск по одинаковой логике фильтрации.
     const old = this.calculateMetric(rows, "/search/", from, to);
     const current = this.calculateMetric(rows, "/searchSmart/", from, to);
+
+    // Разница в процентных пунктах: 5,69% − 5,01% = 0,68 п.п.
     const differencePercentagePoints = this.round(
       old.zeroResultsPercent - current.zeroResultsPercent,
     );
+
+    // Относительное улучшение относительно старого значения.
     const oldRate = old.zeroResults / old.total;
     const currentRate = current.zeroResults / current.total;
 
@@ -65,6 +76,8 @@ export class SearchAnalytics {
     };
   }
 
+  // Убираем параметры URL и оставляем только pathname, чтобы старый и новый поиск
+  // сравнивались по одной логике независимо от query-параметров.
   private getPath(url: string): string | null {
     try {
       return new URL(url).pathname;
@@ -73,6 +86,7 @@ export class SearchAnalytics {
     }
   }
 
+  // Даты в CSV бывают в разных форматах: dd.mm.yyyy HH:mm:ss и yyyy-mm-dd HH:mm:ss.
   private parseRowDate(value: string): Date | null {
     const date = value.match(/^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}:\d{2}:\d{2})$/);
     if (date) {
@@ -89,6 +103,8 @@ export class SearchAnalytics {
     return null;
   }
 
+  // Поддерживаем даты вида YYYY-MM-DD и DD.MM.YYYY.
+  // Для "to" добавляем конец дня, чтобы интервал включал весь день.
   private parseDateInput(value: string, mode: "from" | "to"): Date {
     const trimmed = value.trim();
     const dateOnly = trimmed.match(/^\d{4}-\d{2}-\d{2}$/);
